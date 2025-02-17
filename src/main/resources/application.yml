@@ -1,0 +1,89 @@
+spring:
+  application:
+    name: scs-reactive-demo-a
+    
+#  docker:
+#    compose:
+#      enabled: false
+#      start:
+#        command: up
+#        arguments: -d --force-recreate
+#      stop:
+#        command: down
+  
+  r2dbc:
+    url: r2dbc:postgresql://localhost:5432/mydatabase
+    username: myuser
+    password: secret
+    
+  sql:
+    init:
+      mode: always
+      username: myuser
+      password: secret
+      schema-locations: classpath:scripts/ddl.sql
+  
+  cloud:
+    function:
+      definition: onTransactionConsumed;errorOnTransactionConsumed;onCustomerConsumed;onAccountConsumed;
+    stream:
+#      input-bindings: onTransactionConsumed;onCustomerConsumed;onAccountConsumed
+#      output-bindings: 
+      bindings:
+        onTransactionConsumed-in-0:
+          destination: io.codegitters.transaction_consumer.on_transaction_consumed
+          group: ${spring.application.name}
+#          error-handler-definition: onErrorTransactionConsumed
+#          consumer:
+#            max-attempts: 4
+#            default-retryable: true
+        errorOnTransactionConsumed-in-0:
+          destination: io.codegitters.transaction_consumer.on_transaction_consumed.dlq
+          group: ${spring.application.name}-errors
+        onCustomerConsumed-in-0:
+          destination: io.codegitters.customer_consumer.on_customer_consumed
+          group: ${spring.application.name}
+          consumer:
+            use-native-decoding: true
+        onAccountConsumed-in-0:
+          destination: io.codegitters.account_consumer.on_account_consumed
+          group: ${spring.application.name}
+      kafka:
+        bindings:
+#          DEFAULT CONSUME RECORDS
+          onTransactionConsumed-in-0:
+            consumer:
+              reactive-at-most-once: false
+              reactive-auto-commit: false
+              auto-commit-on-error: true
+              enable-dlq: true
+              dlq-name: io.codegitters.transaction_consumer.on_transaction_consumed.dlq
+#          NATIVE DESERIALIZATION RECORD
+          onCustomerConsumed-in-0:
+            consumer:
+              reactive-at-most-once: false
+              reactive-auto-commit: true
+              auto-commit-on-error: true
+              trusted-packages:
+                - io.codegitters.scs_reactive_demo_a.customer
+              configuration:
+                key.deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
+                value.deserializer: io.codegitters.scs_reactive_demo_a.util.CustomerDeserializer
+#          USE KAFKA REACTOR RECORD API
+          onAccountConsumed-in-0:
+            consumer:
+              reactive-auto-commit: false
+              reactive-at-most-once: false
+              auto-commit-on-error: true
+              converter-bean-name: onAccountConsumedRecordMessageConverter
+        binder:
+          brokers: kafka:9092
+          
+      
+          
+logging:
+  level:
+    root: info
+    org.apache.kafka: error
+    io.codegitters: debug
+
